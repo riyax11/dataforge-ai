@@ -1,15 +1,22 @@
-# [Project name]
+# DataForge AI
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A governed data-pipeline workspace with source profiling, human approvals, quality summaries, and audit trails.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm install --frozen-lockfile` — install the workspace dependencies
+- Start `artifacts/dataforge-ai: web` in Replit Workflows — frontend at `/`
+- Start `artifacts/api-server: API Server` in Replit Workflows — API at `/api` (port 8080)
+- The managed frontend workflow supplies `PORT` and `BASE_PATH`; use it rather than running Vite without those variables.
+- `artifacts/mockup-sandbox: Component Preview Server` is the existing optional design-preview service at `/__mockup`.
+- `pnpm --filter @workspace/api-server run dev` — build and start the API (requires the workflow-provided `PORT`)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DATABASE_URL` — provided by the project's PostgreSQL database; do not commit credentials.
+- On a fresh development database, run `pnpm --filter @workspace/db run push` before starting the API. This updates the schema; inspect any proposed changes before applying to an existing database.
+- The API seeds a demo customer pipeline only when the pipelines table is empty.
 
 ## Stack
 
@@ -22,7 +29,12 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/dataforge-ai/` — React/Vite frontend and styles
+- `artifacts/api-server/` — Express API and startup
+- `lib/db/src/schema/` — PostgreSQL schema
+- `lib/api-spec/` — OpenAPI contract and code generation
+- `lib/api-client-react/`, `lib/api-zod/` — generated shared clients and validation
+- `artifacts/mockup-sandbox/` — existing design previews
 
 ## Architecture decisions
 
@@ -38,7 +50,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The API requires the database schema before startup because demo seeding runs before it listens.
+- The imported execution route calculates validation results from source-profile metadata; this setup does not add a real data-transformation engine or an external AI provider.
 
 ## Pointers
 
