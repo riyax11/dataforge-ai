@@ -1,0 +1,1 @@
+- [Generated client typecheck](generated-client-typecheck.md) — Orval-generated browser clients may need `dom.iterable` in the shared client tsconfig for `Headers.entries()`.

@@ -3,13 +3,17 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Agentic data engineering orchestration API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: pipelines
+    description: Governed data pipeline operations
+  - name: dashboard
+    description: Dashboard summaries and audit activity
 paths:
   /healthz:
     get:
@@ -24,7 +28,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /pipelines:
+    get:
+      operationId: listPipelines
+      tags: [pipelines]
+      summary: List pipelines
+      responses:
+        "200":
+          description: Pipelines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pipeline"
+    post:
+      operationId: createPipeline
+      tags: [pipelines]
+      summary: Create a pipeline draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineInput"
+      responses:
+        "201":
+          description: Created pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+  /pipelines/{pipelineId}:
+    get:
+      operationId: getPipeline
+      tags: [pipelines]
+      summary: Get a pipeline
+      parameters:
+        - $ref: "#/components/parameters/PipelineId"
+      responses:
+        "200":
+          description: Pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /pipelines/{pipelineId}/source:
+    post:
+      operationId: attachPipelineSource
+      tags: [pipelines]
+      summary: Attach a profiled CSV source and generate a plan
+      parameters:
+        - $ref: "#/components/parameters/PipelineId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceInput"
+      responses:
+        "200":
+          description: Pipeline with inferred profile and plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /pipelines/{pipelineId}/approval:
+    post:
+      operationId: decidePipelineApproval
+      tags: [pipelines]
+      summary: Approve or reject a high-impact action
+      parameters:
+        - $ref: "#/components/parameters/PipelineId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalInput"
+      responses:
+        "200":
+          description: Pipeline with recorded decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /pipelines/{pipelineId}/run:
+    post:
+      operationId: runPipeline
+      tags: [pipelines]
+      summary: Run an approved pipeline
+      parameters:
+        - $ref: "#/components/parameters/PipelineId"
+      responses:
+        "200":
+          description: Completed pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard metrics
+      responses:
+        "200":
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [dashboard]
+      summary: List recent audit activity
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 12
+      responses:
+        "200":
+          description: Recent audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEvent"
 components:
+  parameters:
+    PipelineId:
+      name: pipelineId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Invalid pipeline state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +200,239 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    PipelineStatus:
+      type: string
+      enum:
+        - awaiting_source
+        - awaiting_approval
+        - approved
+        - rejected
+        - completed
+    Pipeline:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        requirement:
+          type: string
+        status:
+          $ref: "#/components/schemas/PipelineStatus"
+        createdAt:
+          type: string
+          format: date-time
+        source:
+          anyOf:
+            - $ref: "#/components/schemas/SourceProfile"
+            - type: "null"
+        plan:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanStep"
+        approval:
+          anyOf:
+            - $ref: "#/components/schemas/Approval"
+            - type: "null"
+        validation:
+          anyOf:
+            - $ref: "#/components/schemas/Validation"
+            - type: "null"
+        audit:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityEvent"
+      required:
+        - id
+        - name
+        - requirement
+        - status
+        - createdAt
+        - source
+        - plan
+        - approval
+        - validation
+        - audit
+    PipelineInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        requirement:
+          type: string
+          minLength: 10
+          maxLength: 3000
+      required: [name, requirement]
+    SourceInput:
+      type: object
+      properties:
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        rowCount:
+          type: integer
+          minimum: 0
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColumnProfile"
+        duplicateCount:
+          type: integer
+          minimum: 0
+        missingCellCount:
+          type: integer
+          minimum: 0
+        previewRows:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            additionalProperties:
+              type: string
+      required: [fileName, rowCount, columns, duplicateCount, missingCellCount, previewRows]
+    SourceProfile:
+      type: object
+      properties:
+        fileName:
+          type: string
+        rowCount:
+          type: integer
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColumnProfile"
+        duplicateCount:
+          type: integer
+        missingCellCount:
+          type: integer
+        previewRows:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+      required: [fileName, rowCount, columns, duplicateCount, missingCellCount, previewRows]
+    ColumnProfile:
+      type: object
+      properties:
+        name:
+          type: string
+        dtype:
+          type: string
+        missing:
+          type: integer
+        unique:
+          type: integer
+      required: [name, dtype, missing, unique]
+    PlanStep:
+      type: object
+      properties:
+        action:
+          type: string
+        risk:
+          type: string
+          enum: [safe, approval_required]
+        reason:
+          type: string
+      required: [action, risk, reason]
+    Approval:
+      type: object
+      properties:
+        approver:
+          type: string
+        role:
+          type: string
+        decision:
+          type: string
+          enum: [approve, reject]
+        note:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+      required: [approver, role, decision, note, decidedAt]
+    ApprovalInput:
+      type: object
+      properties:
+        approver:
+          type: string
+          minLength: 2
+          maxLength: 80
+        role:
+          type: string
+          minLength: 2
+          maxLength: 80
+        decision:
+          type: string
+          enum: [approve, reject]
+        note:
+          type: string
+          maxLength: 500
+      required: [approver, role, decision]
+    Validation:
+      type: object
+      properties:
+        passed:
+          type: boolean
+        inputRows:
+          type: integer
+        outputRows:
+          type: integer
+        duplicatesRemoved:
+          type: integer
+        completenessScore:
+          type: number
+        uniquenessScore:
+          type: number
+        schemaPreserved:
+          type: boolean
+        summary:
+          type: string
+      required: [passed, inputRows, outputRows, duplicatesRemoved, completenessScore, uniquenessScore, schemaPreserved, summary]
+    ActivityEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        pipelineId:
+          type: string
+          format: uuid
+        time:
+          type: string
+          format: date-time
+        event:
+          type: string
+        detail:
+          type: string
+      required: [id, pipelineId, time, event, detail]
+    DashboardSummary:
+      type: object
+      properties:
+        activePipelines:
+          type: integer
+        qualityScore:
+          type: number
+        pendingApprovals:
+          type: integer
+        completedRuns:
+          type: integer
+        rowsProcessed:
+          type: integer
+        slaCompliance:
+          type: number
+        pipelineStatus:
+          type: object
+          additionalProperties:
+            type: integer
+      required: [activePipelines, qualityScore, pendingApprovals, completedRuns, rowsProcessed, slaCompliance, pipelineStatus]
 

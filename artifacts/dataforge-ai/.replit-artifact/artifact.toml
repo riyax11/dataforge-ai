@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "DataForge AI"
+description = "A governed data pipeline control room that turns business requirements into explainable, approval-aware workflows with quality validation and audit trails."
+version = "1.0.0"
+id = "artifacts/dataforge-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21639
+
+[services.development]
+run = "pnpm --filter @workspace/dataforge-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/dataforge-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/dataforge-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21639"
+BASE_PATH = "/"

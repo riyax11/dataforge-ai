@@ -1,0 +1,17 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "EaT5S47N3Y8ul8yB85lck"
+uri = "file://.local/conversation-workspace/files/attached_assets/DataForge-AI-preview.jpg"
+type = "image"
+title = "DataForge AI overview preview"
+description = "Saved overview screen from the uploaded project, showing the control room, pipeline status, approval queue, and agent activity."
+logical_id = "3b17c72a-43a9-431e-bbbf-69786ca10dcb"
+content_hash = "sha256:2647d66142ced0c604ab086171455a37fc62b0108e99ef00b6698ba11148bdc8"
+size = 86272
+mtime_ms = 1790442418058
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/conversation:9bacf502-82b6-4264-9a38-a9f3af6f57a7/3b17c72a-43a9-431e-bbbf-69786ca10dcb/b3291cc2-92ea-4686-9f80-039132f53bd2"
+storage_version_token = "1790442431552812"
+content_type = "image/jpeg"
+source_uri = "file://attached_assets/DataForge-AI-preview.jpg"
