@@ -19,6 +19,7 @@ import {
   AttachPipelineSourceParams,
   AttachPipelineSourceResponse,
 } from "@workspace/api-zod";
+import { generatePlan } from "../lib/planner";
 import {
   type ActivityEvent as ActivityEventData,
   type Approval as ApprovalData,
@@ -76,7 +77,8 @@ function buildPlan(source: SourceProfile): PlanStep[] {
     {
       action: "validate_output",
       risk: "safe",
-      reason: "Verify row counts, completeness, uniqueness, and schema conformance.",
+      reason:
+        "Verify row counts, completeness, uniqueness, and schema conformance.",
     },
     {
       action: "publish_validated_output",
@@ -177,6 +179,14 @@ router.post(
     }
 
     const source: SourceProfile = parsed.data;
+    const { plan, usedLlm } = await generatePlan(
+      source,
+      row.requirement,
+      buildPlan(source),
+    );
+    const gatedActions = plan
+      .filter((step) => step.risk === "approval_required")
+      .map((step) => step.action.replaceAll("_", " "));
     const audit = addAudit(
       addAudit(
         row.audit,
@@ -186,20 +196,20 @@ router.post(
       ),
       row.id,
       "plan_generated",
-      "The agent generated a six-step plan and classified each action by risk.",
+      `The ${usedLlm ? "LLM planner" : "rule-based planner"} generated a ${plan.length}-step plan and classified each action by risk.`,
     );
     const withApprovalRequest = addAudit(
       audit,
       row.id,
       "approval_requested",
-      "The agent paused before duplicate removal and output publication.",
+      `The agent paused before ${gatedActions.join(" and ")}.`,
     );
 
     const [updated] = await db
       .update(pipelinesTable)
       .set({
         source,
-        plan: buildPlan(source),
+        plan,
         status: "awaiting_approval",
         audit: withApprovalRequest,
       })
@@ -259,74 +269,71 @@ router.post(
   },
 );
 
-router.post(
-  "/pipelines/:pipelineId/run",
-  async (req, res): Promise<void> => {
-    const params = RunPipelineParams.safeParse(req.params);
-    if (!params.success) {
-      res.status(400).json({ error: params.error.message });
-      return;
-    }
+router.post("/pipelines/:pipelineId/run", async (req, res): Promise<void> => {
+  const params = RunPipelineParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
 
-    const row = await getPipelineRow(params.data.pipelineId);
-    if (!row) {
-      res.status(404).json({ error: "Pipeline not found" });
-      return;
-    }
-    if (row.status !== "approved") {
-      res.status(409).json({
-        error: "A human must approve the pipeline before it can run",
-      });
-      return;
-    }
-    if (!row.source) {
-      res.status(409).json({ error: "Pipeline has no profiled source" });
-      return;
-    }
+  const row = await getPipelineRow(params.data.pipelineId);
+  if (!row) {
+    res.status(404).json({ error: "Pipeline not found" });
+    return;
+  }
+  if (row.status !== "approved") {
+    res.status(409).json({
+      error: "A human must approve the pipeline before it can run",
+    });
+    return;
+  }
+  if (!row.source) {
+    res.status(409).json({ error: "Pipeline has no profiled source" });
+    return;
+  }
 
-    const inputRows = row.source.rowCount;
-    const outputRows = Math.max(0, inputRows - row.source.duplicateCount);
-    const cellCount = Math.max(1, inputRows * row.source.columns.length);
-    const completenessScore = Math.max(
-      0,
-      Math.round((1 - row.source.missingCellCount / cellCount) * 100),
-    );
-    const uniquenessScore = Math.max(
-      0,
-      Math.round((1 - row.source.duplicateCount / Math.max(1, inputRows)) * 100),
-    );
-    const validation: Validation = {
-      passed: true,
-      inputRows,
-      outputRows,
-      duplicatesRemoved: row.source.duplicateCount,
-      completenessScore,
-      uniquenessScore,
-      schemaPreserved: true,
-      summary:
-        "The approved transformation completed and the output passed configured quality checks.",
-    };
-    const audit = addAudit(
-      addAudit(
-        row.audit,
-        row.id,
-        "pipeline_started",
-        "Approved plan execution started.",
-      ),
+  const inputRows = row.source.rowCount;
+  const outputRows = Math.max(0, inputRows - row.source.duplicateCount);
+  const cellCount = Math.max(1, inputRows * row.source.columns.length);
+  const completenessScore = Math.max(
+    0,
+    Math.round((1 - row.source.missingCellCount / cellCount) * 100),
+  );
+  const uniquenessScore = Math.max(
+    0,
+    Math.round((1 - row.source.duplicateCount / Math.max(1, inputRows)) * 100),
+  );
+  const validation: Validation = {
+    passed: true,
+    inputRows,
+    outputRows,
+    duplicatesRemoved: row.source.duplicateCount,
+    completenessScore,
+    uniquenessScore,
+    schemaPreserved: true,
+    summary:
+      "The approved transformation completed and the output passed configured quality checks.",
+  };
+  const audit = addAudit(
+    addAudit(
+      row.audit,
       row.id,
-      "pipeline_completed",
-      `Validated output has ${outputRows.toLocaleString()} rows; ${row.source.duplicateCount.toLocaleString()} duplicates removed.`,
-    );
+      "pipeline_started",
+      "Approved plan execution started.",
+    ),
+    row.id,
+    "pipeline_completed",
+    `Validated output has ${outputRows.toLocaleString()} rows; ${row.source.duplicateCount.toLocaleString()} duplicates removed.`,
+  );
 
-    const [updated] = await db
-      .update(pipelinesTable)
-      .set({ status: "completed", validation, audit })
-      .where(eq(pipelinesTable.id, row.id))
-      .returning();
+  const [updated] = await db
+    .update(pipelinesTable)
+    .set({ status: "completed", validation, audit })
+    .where(eq(pipelinesTable.id, row.id))
+    .returning();
 
-    res.json(RunPipelineResponse.parse(toApiPipeline(updated)));
-  },
-);
+  res.json(RunPipelineResponse.parse(toApiPipeline(updated)));
+});
 
 router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const rows = await db.select().from(pipelinesTable);
@@ -449,14 +456,16 @@ export async function seedDemoPipeline(): Promise<void> {
       pipelineId: id,
       time: new Date(Date.now() - 1000 * 60 * 9).toISOString(),
       event: "plan_generated",
-      detail: "The agent generated a six-step plan and classified each action by risk.",
+      detail:
+        "The agent generated a six-step plan and classified each action by risk.",
     },
     {
       id: crypto.randomUUID(),
       pipelineId: id,
       time: new Date(Date.now() - 1000 * 60 * 7).toISOString(),
       event: "approval_requested",
-      detail: "The agent paused before duplicate removal and output publication.",
+      detail:
+        "The agent paused before duplicate removal and output publication.",
     },
   ];
 
