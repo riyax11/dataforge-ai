@@ -4,10 +4,11 @@ A governed data pipeline control room that turns business requirements into expl
 
 An LLM (via Groq) **proposes** the pipeline steps and explains why, but it never decides what is risky. Steps that change or publish data always stop for a human approval, and every action is written to an audit log.
 
-<!-- Add screenshots here after uploading them to the repo, for example:
-![Dashboard](screenshots/dashboard.png)
-![Explainable plan](screenshots/plan.png)
--->
+   ![Dashboard](screenshots/dashboard.png)
+
+   ![Explainable plan](screenshots/plan.png)
+
+   ![Audit log](screenshots/audit.png)
 
 ## How it works
 
@@ -126,6 +127,3 @@ The plan should mention the duplicate row and the missing email, with duplicate 
 
 Built by **Riya Patkar** ([@riyax11](https://github.com/riyax11)).
 
-## Contributors
-
-- **[Friend's name]**: co-built the original DataForge AI project.
